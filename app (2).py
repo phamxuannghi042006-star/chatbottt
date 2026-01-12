@@ -50,21 +50,28 @@ def load_json_to_chroma(collection, json_path):
     documents, metadatas, ids = [], [], []
 
     for i, item in enumerate(data):
-        # Lấy nội dung an toàn (không crash)
-        content = item.get("content")
+        # 👉 LẤY ĐÚNG FIELD NỘI DUNG TỪ JSON: content_text
+        content = item.get("content_text")
 
-        # Nếu không có content thì bỏ qua
+        # Nếu không có content_text hoặc rỗng → bỏ qua
         if not content or not isinstance(content, str):
-            print(f"⚠️ Bỏ qua dòng {i} vì không có key 'content' hoặc content rỗng")
+            print(f"⚠️ Bỏ qua dòng {i} vì không có 'content_text'")
             continue
 
         documents.append(content)
+
+        # Metadata gọn nhẹ, lấy từ cả cấp ngoài và metadata bên trong
+        meta = item.get("metadata", {})
+
         metadatas.append({
             "hierarchy": item.get("hierarchy", ""),
             "url": item.get("url", ""),
-            "source_file": item.get("source_file", "")
+            "procedure_code": meta.get("procedure_code", ""),
+            "category": meta.get("category", ""),
+            "source_domain": meta.get("source_domain", "")
         })
-        ids.append(f"doc_{i}")
+
+        ids.append(item.get("id", f"doc_{i}"))
 
     if len(documents) == 0:
         st.error("❌ Không có document hợp lệ nào để nạp vào ChromaDB")
@@ -86,6 +93,7 @@ if os.path.exists(JSON_FILE):
         try:
             data = json.load(f)
             st.sidebar.write("📊 Tổng số item trong JSON:", len(data))
+            st.sidebar.write("🔍 Sample item:", data[0])
         except Exception as e:
             st.sidebar.error(f"❌ Lỗi đọc JSON: {e}")
 
@@ -191,4 +199,3 @@ if prompt:
     st.session_state.messages.append(
         {"role": "assistant", "content": answer}
     )
-

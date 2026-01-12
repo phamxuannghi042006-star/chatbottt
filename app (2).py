@@ -9,7 +9,7 @@ import google.generativeai as genai
 CHROMA_DB_PATH = "chroma_db"
 COLLECTION_NAME = "tthc_collection"
 
-# 🔑 LẤY ĐƯỜNG DẪN TUYỆT ĐỐI THEO FILE app.py (KHÔNG BAO GIỜ LỖI)
+# 🔑 LẤY ĐƯỜNG DẪN TUYỆT ĐỐI THEO FILE app.py
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 JSON_FILE = os.path.join(BASE_DIR, "data", "all_procedures_normalized.json")
 
@@ -38,21 +38,37 @@ def load_collection():
     )
     return collection
 
-# ================== LOAD JSON → ADD VÀO CHROMA (CHẠY 1 LẦN) ==================
+# ================== LOAD JSON → ADD VÀO CHROMA ==================
 def load_json_to_chroma(collection, json_path):
+    if not os.path.exists(json_path):
+        st.error(f"❌ Không tìm thấy file JSON: {json_path}")
+        st.stop()
+
     with open(json_path, "r", encoding="utf-8") as f:
         data = json.load(f)
 
     documents, metadatas, ids = [], [], []
 
     for i, item in enumerate(data):
-        documents.append(item["content"])
+        # Lấy nội dung an toàn (không crash)
+        content = item.get("content")
+
+        # Nếu không có content thì bỏ qua
+        if not content or not isinstance(content, str):
+            print(f"⚠️ Bỏ qua dòng {i} vì không có key 'content' hoặc content rỗng")
+            continue
+
+        documents.append(content)
         metadatas.append({
             "hierarchy": item.get("hierarchy", ""),
             "url": item.get("url", ""),
             "source_file": item.get("source_file", "")
         })
         ids.append(f"doc_{i}")
+
+    if len(documents) == 0:
+        st.error("❌ Không có document hợp lệ nào để nạp vào ChromaDB")
+        st.stop()
 
     collection.add(
         documents=documents,
@@ -63,9 +79,17 @@ def load_json_to_chroma(collection, json_path):
 # ================== KHỞI TẠO DB ==================
 collection = load_collection()
 
-# DEBUG an toàn (có thể xoá sau)
+# ================== DEBUG ==================
 st.sidebar.write("📄 JSON exists:", os.path.exists(JSON_FILE))
+if os.path.exists(JSON_FILE):
+    with open(JSON_FILE, "r", encoding="utf-8") as f:
+        try:
+            data = json.load(f)
+            st.sidebar.write("📊 Tổng số item trong JSON:", len(data))
+        except Exception as e:
+            st.sidebar.error(f"❌ Lỗi đọc JSON: {e}")
 
+# ================== NẠP DỮ LIỆU (CHẠY 1 LẦN) ==================
 if collection.count() == 0:
     st.warning("📥 Đang nạp dữ liệu vào Vector DB...")
     load_json_to_chroma(collection, JSON_FILE)
@@ -79,15 +103,15 @@ def query_rag(query: str, top_k: int):
         include=["documents", "metadatas"]
     )
 
-    if not results["documents"][0]:
+    if not results["documents"] or not results["documents"][0]:
         return None
 
     context_parts = []
     for doc, meta in zip(results["documents"][0], results["metadatas"][0]):
         context_parts.append(
-            f"[BLOCK: {meta['hierarchy']}]\n"
+            f"[BLOCK: {meta.get('hierarchy', '')}]\n"
             f"{doc}\n"
-            f"NGUỒN: {meta['url']}"
+            f"NGUỒN: {meta.get('url', '')}"
         )
 
     return "\n\n".join(context_parts)
@@ -167,3 +191,4 @@ if prompt:
     st.session_state.messages.append(
         {"role": "assistant", "content": answer}
     )
+
